@@ -1,0 +1,37 @@
+[
+  {
+    "name": "zepto",
+    "label": "Zepto",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "mcp-remote@0.15.2", "https://mcp.zepto.co.in/mcp"],
+    "can_order": true
+  },
+  {
+    "name": "instamart",
+    "label": "Swiggy Instamart",
+    "enabled": false,
+    "transport": "http",
+    "url": "https://mcp.swiggy.com/im",
+    "headers": { "Authorization": "Bearer REPLACE_WITH_TOKEN_FROM_SWIGGY" },
+    "can_order": true
+  },
+  {
+    "name": "compare",
+    "label": "Price comparison (QuickCommerce API, includes Blinkit)",
+    "enabled": false,
+    "transport": "http",
+    "url": "REPLACE_WITH_MCP_URL_FROM_quickcommerceapi.com/mcp",
+    "headers": { "Authorization": "Bearer REPLACE_WITH_API_KEY" },
+    "can_order": false
+  },
+  {
+    "name": "demo",
+    "label": "Demo shop (fake, for testing)",
+    "enabled": false,
+    "transport": "stdio",
+    "command": ".venv/bin/python",
+    "args": ["tests/fake_shop_server.py", "fakeshop"],
+    "can_order": true
+  }
+]

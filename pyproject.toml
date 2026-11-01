@@ -1,0 +1,24 @@
+[project]
+name = "mom-grocery-agent"
+version = "0.1.0"
+description = "Voice grocery helper (Hindi/Marathi/English) that compares quick-commerce prices and orders after a spoken yes"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic[mcp]>=2.3",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.setuptools]
+packages = ["grocery_agent"]
