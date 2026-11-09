@@ -55,8 +55,8 @@ class Settings:
     # Sarvam AI (speech to text, text to speech)
     sarvam_api_key: str = os.getenv("SARVAM_API_KEY", "")
     sarvam_stt_model: str = os.getenv("SARVAM_STT_MODEL", "saarika:v2.5")
-    sarvam_tts_model: str = os.getenv("SARVAM_TTS_MODEL", "bulbul:v2")
-    sarvam_speaker: str = os.getenv("SARVAM_SPEAKER", "anushka")
+    sarvam_tts_model: str = os.getenv("SARVAM_TTS_MODEL", "bulbul:v3")
+    sarvam_speaker: str = os.getenv("SARVAM_SPEAKER", "priya")
 
     # WhatsApp Cloud API
     wa_token: str = os.getenv("WHATSAPP_TOKEN", "")
