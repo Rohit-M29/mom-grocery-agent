@@ -94,9 +94,11 @@ class FakeWhatsApp:
 
     async def send_text(self, to, text):
         self.sent.append(("text", to, text))
+        return f"wamid.{len(self.sent)}"
 
     async def send_voice(self, to, ogg):
         self.sent.append(("voice", to, ogg.decode()))
+        return f"wamid.{len(self.sent)}", f"media.{len(self.sent)}"
 
 
 class FakeSpeech:
@@ -137,10 +139,11 @@ async def test_whatsapp_conversation_end_to_end(tmp_path, monkeypatch):
         await server._handle({"id": "x", "from": "910000000000", "type": "text", "text": "hi"})
         assert wa.sent == []
 
-        transcript = []
+        transcript, watched = [], []
         for i in (1, 2, 3):
             before = len(wa.sent)
             await server._handle({"id": f"w{i}", "from": MOM, "type": "audio", "media_id": f"note{i}"})
+            watched.append(store.open_watches(MOM))
             transcript.append(("Mom (voice)", FakeSpeech.heard[f"note{i}"][0]))
             transcript += [(f"-> {kind} to {'Mom' if to == MOM else 'Rohit'}", body)
                            for kind, to, body in wa.sent[before:]]
@@ -164,6 +167,10 @@ async def test_whatsapp_conversation_end_to_end(tmp_path, monkeypatch):
     assert any("cash on delivery found" in r["content"] for r in turn3_results)
     assert len(placed) == 1 and placed[0]["status"] == "paid"
     assert store.spent_since(3600) == 68
+
+    # Only the reply asking her to confirm the order waits for a read receipt; the order ends it.
+    assert watched[0] == [] and watched[2] == []
+    assert watched[1][0]["total"] == 68 and watched[1][0]["media_id"].startswith("media.")
 
     # The model saw the shop data and the block messages; the history was stored.
     assert claude.script == []

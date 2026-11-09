@@ -35,6 +35,17 @@ def parse_messages(payload: dict) -> list[dict]:
     return out
 
 
+def parse_statuses(payload: dict) -> list[dict]:
+    """Delivery receipts for messages we sent: [{'id', 'status', 'recipient'}]."""
+    out = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            for st in change.get("value", {}).get("statuses", []) or []:
+                if st.get("id") and st.get("status"):
+                    out.append({"id": st["id"], "status": st["status"], "recipient": st.get("recipient_id")})
+    return out
+
+
 class WhatsApp:
     def __init__(self, settings: Settings):
         self.s = settings
@@ -50,24 +61,29 @@ class WhatsApp:
         r.raise_for_status()
         return r.content
 
-    async def send_text(self, to: str, text: str) -> None:
-        r = await self.http.post(f"/{self.s.wa_phone_number_id}/messages", json={
-            "messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": text},
-        })
+    async def _send(self, payload: dict) -> str:
+        r = await self.http.post(f"/{self.s.wa_phone_number_id}/messages",
+                                 json={"messaging_product": "whatsapp", **payload})
         r.raise_for_status()
+        return r.json()["messages"][0]["id"]
 
-    async def send_voice(self, to: str, ogg: bytes) -> None:
+    async def send_text(self, to: str, text: str) -> str:
+        """Returns the WhatsApp message id, which delivery receipts refer to."""
+        return await self._send({"to": to, "type": "text", "text": {"body": text}})
+
+    async def send_voice(self, to: str, ogg: bytes) -> tuple[str, str]:
+        """Returns (message id, media id); the media id can be sent again for 30 days."""
         up = await self.http.post(
             f"/{self.s.wa_phone_number_id}/media",
             data={"messaging_product": "whatsapp", "type": "audio/ogg"},
             files={"file": ("reply.ogg", ogg, "audio/ogg")},
         )
         up.raise_for_status()
-        r = await self.http.post(f"/{self.s.wa_phone_number_id}/messages", json={
-            "messaging_product": "whatsapp", "to": to, "type": "audio",
-            "audio": {"id": up.json()["id"]},
-        })
-        r.raise_for_status()
+        media_id = up.json()["id"]
+        return await self.send_audio(to, media_id), media_id
+
+    async def send_audio(self, to: str, media_id: str) -> str:
+        return await self._send({"to": to, "type": "audio", "audio": {"id": media_id}})
 
     async def mark_read(self, message_id: str) -> None:
         await self.http.post(f"/{self.s.wa_phone_number_id}/messages", json={

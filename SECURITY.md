@@ -69,7 +69,8 @@ Give the bot its own accounts so a mistake or a leak is contained:
 - **Purpose and consent:** used only for grocery ordering. Tell Mom what the bot does; she
   is the data principal.
 - **Minimisation:** voice notes aren't stored, only the transcript, inside the conversation
-  history. Conversations reset after 3 hours of silence.
+  history. Conversations reset after 3 hours of silence. For read receipts, only WhatsApp
+  message ids and their status are stored, and they're deleted when she next writes.
 - **Retention:** conversations and order records older than `DATA_RETENTION_DAYS`
   (default 90) are deleted at startup.
 - **Processors:** transcripts go to Sarvam (speech) and Anthropic (Claude). Check their
@@ -78,7 +79,8 @@ Give the bot its own accounts so a mistake or a leak is contained:
 ## WhatsApp policy
 
 Mom messages the bot first, so replies fall inside WhatsApp's 24-hour customer-service
-window. The bot doesn't send marketing or start conversations. Order and payment notices to
+window. The bot doesn't send marketing or start conversations. A reminder about an
+unopened price quote goes out minutes after her message, well inside that window. Order and payment notices to
 you are sent to numbers that have opted in by messaging the bot.
 
 ## Still open

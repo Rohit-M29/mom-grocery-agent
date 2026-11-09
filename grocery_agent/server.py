@@ -19,7 +19,7 @@ from .commerce import Commerce
 from .config import settings
 from .speech import Speech, guess_language
 from .store import Store
-from .whatsapp import WhatsApp, parse_messages, valid_signature
+from .whatsapp import WhatsApp, parse_messages, parse_statuses, valid_signature
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("grocery_agent")
@@ -64,6 +64,69 @@ async def notify_family(wa, cfg, user: str, order: dict) -> None:
             await wa.send_text(owner, f"Paid from wallet - {summary}")
 
 
+def watch_if_confirming(user: str, message_ids: list[str], media_id: str | None) -> None:
+    """If this reply asks her to confirm an order, wait for WhatsApp to say she opened it."""
+    if settings.read_reminder_minutes <= 0 or not message_ids:
+        return
+    store: Store = state["store"]
+    pending = store.load_session(user, settings.session_idle_hours, settings.session_max_turns)["pending"]
+    if pending:
+        store.watch_reply(user, pending, message_ids, media_id)
+
+
+async def check_unread(now: float | None = None) -> None:
+    """Resend unopened price quotes, then tell the family if she still hasn't seen one."""
+    now = now or time.time()
+    store: Store = state["store"]
+    wa: WhatsApp = state["wa"]
+    wait = settings.read_reminder_minutes * 60
+    for user in [w["user"] for w in store.open_watches()]:
+        async with _user_locks.setdefault(user, asyncio.Lock()):
+            # She may have replied while we waited for the lock, which ends the watch.
+            watch = next(iter(store.open_watches(user)), None)
+            if watch is None:
+                continue
+            pending = store.load_session(user, settings.session_idle_hours,
+                                         settings.session_max_turns)["pending"]
+            if watch["seen"] or not pending or pending["turn"] != watch["proposal_turn"]:
+                store.clear_watch(user)
+                continue
+            quote = f"{watch['platform']}, Rs {watch['total']:g}"
+            if watch["all_failed"]:
+                note = (f"Could not deliver the price message ({quote}) to {mask(user)} on WhatsApp. "
+                        "The order is waiting for her yes - maybe give her a call.")
+            elif now - watch["last_sent"] < wait:
+                continue
+            elif watch["media_id"] and watch["reminders"] < settings.read_reminder_max:
+                try:
+                    message_id = await wa.send_audio(user, watch["media_id"])
+                except Exception:
+                    log.exception("Reminder to %s failed", mask(user))
+                    message_id = None
+                store.record_reminder(user, message_id, now)
+                log.info("Resent unopened price quote to %s", mask(user))
+                continue
+            else:
+                minutes = round((now - watch["started"]) / 60)
+                note = (f"{mask(user)} hasn't opened the price message ({quote}) for about {minutes} min. "
+                        "The order is waiting for her yes - maybe give her a call.")
+            for owner in sorted(set(settings.owner_numbers) - {user}):
+                try:
+                    await wa.send_text(owner, note)
+                except Exception:
+                    log.exception("Could not tell %s about an unopened quote", mask(owner))
+            store.mark_alerted(user)
+
+
+async def _reminder_loop() -> None:
+    while True:
+        await asyncio.sleep(60)
+        try:
+            await check_unread()
+        except Exception:
+            log.exception("Read-receipt check failed")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     store = Store(settings.db_path)
@@ -76,7 +139,10 @@ async def lifespan(_: FastAPI):
 
         state.update(store=store, wa=wa, speech=speech,
                      agent=GroceryAgent(settings, store, commerce, on_order=notify_owner))
+        reminders = asyncio.create_task(_reminder_loop()) if settings.read_reminder_minutes > 0 else None
         yield
+        if reminders:
+            reminders.cancel()
     await wa.aclose()
     await speech.aclose()
 
@@ -102,7 +168,14 @@ async def incoming(request: Request):
     body = await request.body()
     if not valid_signature(settings.wa_app_secret, body, request.headers.get("x-hub-signature-256")):
         raise HTTPException(status_code=401)
-    for msg in parse_messages(await request.json()):
+    payload = await request.json()
+    store: Store | None = state.get("store")
+    for receipt in parse_statuses(payload):
+        if receipt["status"] == "failed":
+            log.warning("WhatsApp could not deliver a message to %s", mask(receipt["recipient"] or ""))
+        if store and receipt["recipient"] in settings.allowed_numbers:
+            store.record_status(receipt["id"], receipt["status"], receipt["recipient"])
+    for msg in parse_messages(payload):
         if msg["id"] in _seen:
             continue
         _seen[msg["id"]] = None
@@ -128,6 +201,8 @@ async def _handle(msg: dict) -> None:
     lock = _user_locks.setdefault(sender, asyncio.Lock())
     async with lock:
         try:
+            # She wrote back, so whatever we were waiting on her to open has been dealt with.
+            state["store"].clear_watch(sender)
             await wa.mark_read(msg["id"])
             if msg["type"] == "audio":
                 audio = await wa.download_media(msg["media_id"])
@@ -145,13 +220,19 @@ async def _handle(msg: dict) -> None:
             answer = await agent.reply(sender, text)
             log.info("Reply to %s: %s", mask(sender), answer)
 
+            sent, media_id = [], None
             try:
                 voice = await speech.speak(answer, language or guess_language(answer))
-                await wa.send_voice(sender, voice)
+                voice_id, media_id = await wa.send_voice(sender, voice)
+                sent.append(voice_id)
             except Exception:
                 log.exception("Voice reply failed; sending text only")
             # Text too, so the family can read back prices later.
-            await wa.send_text(sender, answer)
+            sent.append(await wa.send_text(sender, answer))
+            try:
+                watch_if_confirming(sender, sent, media_id)
+            except Exception:
+                log.exception("Could not start waiting for a read receipt")
         except Exception:
             log.exception("Failed to handle message from %s", mask(sender))
             try:

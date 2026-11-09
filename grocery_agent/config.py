@@ -48,6 +48,10 @@ class Settings:
     # Conversations and order records older than this are deleted.
     data_retention_days: int = int(os.getenv("DATA_RETENTION_DAYS", "90"))
 
+    # Minutes before an unopened price quote is resent (then owners told); 0 turns it off.
+    read_reminder_minutes: float = float(os.getenv("READ_REMINDER_MINUTES", "10"))
+    read_reminder_max: int = int(os.getenv("READ_REMINDER_MAX", "1"))
+
     # Sarvam AI (speech to text, text to speech)
     sarvam_api_key: str = os.getenv("SARVAM_API_KEY", "")
     sarvam_stt_model: str = os.getenv("SARVAM_STT_MODEL", "saarika:v2.5")
