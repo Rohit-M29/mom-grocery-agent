@@ -50,6 +50,11 @@ WhatsApp voice note
 - **Only allowed numbers** can talk to the bot; WhatsApp webhook signatures are checked.
 - **Compare-only apps** can never touch a cart or order.
 - **You get a copy** of every order on WhatsApp.
+- **Did she see the price?** WhatsApp reports when a message is delivered and read. If
+  she hasn't opened a price quote after 10 minutes, the voice note is sent again. If she
+  still hasn't opened it after another 10, you get a WhatsApp message to call her. You also
+  get one straight away if WhatsApp can't deliver it. "Read" means she opened the chat, not
+  that she played the voice note. If her read receipts are off, set `READ_REMINDER_MINUTES=0`.
 
 The full review against OWASP's LLM Top 10, RBI payment rules, India's DPDP Act and
 WhatsApp policy, plus what's still open, is in [SECURITY.md](SECURITY.md).
@@ -64,7 +69,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env                  # fill in keys, see below
 cp servers.example.json servers.json  # choose which apps are on
-pytest                                # 92 tests, no keys needed
+pytest                                # 105 tests, no keys needed
 pytest tests/test_end_to_end.py -s    # prints a simulated WhatsApp conversation
 ```
 
@@ -124,7 +129,8 @@ To try without any real app, set `"enabled": true` on the `demo` entry in `serve
    ```
    For testing from a laptop: `cloudflared tunnel --url http://localhost:8000` (free).
 3. In WhatsApp → Configuration, set the webhook URL to `https://<your-host>/webhook`, the
-   verify token to `WHATSAPP_VERIFY_TOKEN`, and subscribe to **messages**.
+   verify token to `WHATSAPP_VERIFY_TOKEN`, and subscribe to **messages** (this also
+   sends the delivered/read receipts the reminders use).
 4. Save the bot's number in Mom's phone as "Grocery" and send it a voice note.
 
 ### 5. Hosting for ₹0
@@ -162,7 +168,7 @@ grocery_agent/
   whatsapp.py  WhatsApp Cloud API client and signature check
   server.py    FastAPI webhook
   cli.py       terminal mode for testing
-  store.py     SQLite: conversations, proposals, orders, preferences
-tests/         92 tests: unit tests, tool tests against fake shops over MCP, and a full
+  store.py     SQLite: conversations, proposals, orders, preferences, read receipts
+tests/         105 tests: unit tests, tool tests against fake shops over MCP, and a full
                simulated WhatsApp conversation (tests/test_end_to_end.py)
 ```
